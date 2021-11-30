@@ -12,6 +12,10 @@ import (
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun/netstack"
+
+	"github.com/zhsj/wghttp/internal/third_party/tailscale/httpproxy"
+	"github.com/zhsj/wghttp/internal/third_party/tailscale/proxymux"
+	"github.com/zhsj/wghttp/internal/third_party/tailscale/socks5"
 )
 
 const (
@@ -47,10 +51,24 @@ func main() {
 	}
 	log.Printf("Listening on %s", ln.Addr())
 
-	s := &http.Server{Handler: httpProxyHandler(tnet.DialContext)}
-	if err := s.Serve(ln); err != nil {
-		log.Fatal(err)
-	}
+	socksListener, httpListener := proxymux.SplitSOCKSAndHTTP(ln)
+
+	httpProxy := &http.Server{Handler: httpproxy.Handler(tnet.DialContext)}
+	socksProxy := &socks5.Server{Dialer: tnet.DialContext}
+
+	errc := make(chan error, 2)
+	go func() {
+		if err := httpProxy.Serve(httpListener); err != nil {
+			errc <- err
+		}
+	}()
+	go func() {
+		if err := socksProxy.Serve(socksListener); err != nil {
+			errc <- err
+		}
+	}()
+
+	log.Fatal(<-errc)
 }
 
 func setupNet(opts options) *netstack.Net {
