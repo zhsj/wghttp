@@ -23,7 +23,7 @@ type options struct {
 	PeerKey      string   `long:"peer-key" env:"PEER_KEY" required:"true" description:"WireGuard server public key in base64 format"`
 	PrivateKey   string   `long:"private-key" env:"PRIVATE_KEY" required:"true" description:"WireGuard client private key in base64 format"`
 	ClientIPs    []string `long:"client-ip" env:"CLIENT_IP" env-delim:"," required:"true" description:"WireGuard client IP address"`
-	Listen       string   `long:"listen" env:"LISTEN" default:"localhost:8080" description:"HTTP proxy server listen address"`
+	Listen       string   `long:"listen" env:"LISTEN" default:"localhost:8080" description:"HTTP & SOCKS5 proxy server listen address"`
 	DNS          []string `long:"dns" env:"DNS" env-delim:"," default:"1.0.0.1" description:"DNS server IP address"`
 	MTU          int      `long:"mtu" env:"MTU" default:"1280" description:"MTU"`
 

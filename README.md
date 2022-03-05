@@ -1,3 +1,3 @@
 # wghttp
 
-Turn WireGuard to an HTTP proxy.
+Turn WireGuard to an HTTP & SOCKS5 proxy.
