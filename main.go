@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	_ "embed"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/jessevdk/go-flags"
 	"golang.zx2c4.com/wireguard/device"
@@ -16,6 +19,9 @@ import (
 	"github.com/zhsj/wghttp/internal/third_party/tailscale/socks5"
 )
 
+//go:embed README.md
+var readme string
+
 var logger *device.Logger
 
 type options struct {
@@ -24,7 +30,7 @@ type options struct {
 	PrivateKey   string   `long:"private-key" env:"PRIVATE_KEY" required:"true" description:"WireGuard client private key in base64 format"`
 	ClientIPs    []string `long:"client-ip" env:"CLIENT_IP" env-delim:"," required:"true" description:"WireGuard client IP address"`
 	Listen       string   `long:"listen" env:"LISTEN" default:"localhost:8080" description:"HTTP & SOCKS5 server address"`
-	DNS          []string `long:"dns" env:"DNS" env-delim:"," default:"" description:"DNS server IP address, only used WireGuard"`
+	DNS          []string `long:"dns" env:"DNS" env-delim:"," default:"" description:"DNS server IP address, only used in WireGuard"`
 	MTU          int      `long:"mtu" env:"MTU" default:"1280" description:"MTU"`
 	ExitMode     string   `long:"exit-mode" env:"EXIT_MODE" default:"remote" choice:"remote" choice:"local" description:"Exit mode"`
 	Verbose      bool     `short:"v" long:"verbose" description:"Show verbose debug information"`
@@ -35,6 +41,14 @@ type options struct {
 func main() {
 	opts := options{}
 	parser := flags.NewParser(&opts, flags.Default)
+	parser.Usage = `[OPTIONS]
+
+Description:`
+	scanner := bufio.NewScanner(strings.NewReader(strings.TrimPrefix(readme, "# wghttp\n")))
+	for scanner.Scan() {
+		parser.Usage += "  " + scanner.Text() + "\n"
+	}
+	parser.Usage = strings.TrimSuffix(parser.Usage, "\n")
 	if _, err := parser.Parse(); err != nil {
 		code := 1
 		if fe, ok := err.(*flags.Error); ok {
