@@ -30,7 +30,7 @@ type options struct {
 	PrivateKey   string   `long:"private-key" env:"PRIVATE_KEY" required:"true" description:"WireGuard client private key in base64 format"`
 	ClientIPs    []string `long:"client-ip" env:"CLIENT_IP" env-delim:"," required:"true" description:"WireGuard client IP address"`
 	Listen       string   `long:"listen" env:"LISTEN" default:"localhost:8080" description:"HTTP & SOCKS5 server address"`
-	DNS          []string `long:"dns" env:"DNS" env-delim:"," default:"" description:"DNS server IP address, only used in WireGuard"`
+	DNS          []string `long:"dns" env:"DNS" env-delim:"," description:"DNS server IP address, only used in WireGuard"`
 	MTU          int      `long:"mtu" env:"MTU" default:"1280" description:"MTU"`
 	ExitMode     string   `long:"exit-mode" env:"EXIT_MODE" default:"remote" choice:"remote" choice:"local" description:"Exit mode"`
 	Verbose      bool     `short:"v" long:"verbose" description:"Show verbose debug information"`
