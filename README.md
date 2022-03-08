@@ -1,6 +1,6 @@
 # wghttp
 
-Turn WireGuard to an HTTP & SOCKS5 proxies.
+Turn WireGuard to HTTP & SOCKS5 proxies.
 
 The HTTP & SOCKS5 proxies are served on same port. It runs in userspace,
 without requirement of WireGuard kernel module or TUN device.
