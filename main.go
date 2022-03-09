@@ -22,25 +22,27 @@ import (
 //go:embed README.md
 var readme string
 
-var logger *device.Logger
+var (
+	logger *device.Logger
+	opts   options
+)
 
 type options struct {
-	PeerEndpoint string   `long:"peer-endpoint" env:"PEER_ENDPOINT" required:"true" description:"WireGuard server address"`
-	PeerKey      string   `long:"peer-key" env:"PEER_KEY" required:"true" description:"WireGuard server public key in base64 format"`
-	PrivateKey   string   `long:"private-key" env:"PRIVATE_KEY" required:"true" description:"WireGuard client private key in base64 format"`
-	ClientIPs    []string `long:"client-ip" env:"CLIENT_IP" env-delim:"," required:"true" description:"WireGuard client IP address"`
-	DNS          []string `long:"dns" env:"DNS" env-delim:"," description:"DNS servers for WireGuard network and resolving server address"`
+	PeerEndpoint string   `long:"peer-endpoint" env:"PEER_ENDPOINT" description:"WireGuard server address"`
+	PeerKey      string   `long:"peer-key" env:"PEER_KEY" description:"WireGuard server public key in base64 format"`
+	PrivateKey   string   `long:"private-key" env:"PRIVATE_KEY" description:"WireGuard client private key in base64 format"`
+	ClientIPs    []string `long:"client-ip" env:"CLIENT_IP" env-delim:"," description:"WireGuard client IP address"`
+	DNS          string   `long:"dns" env:"DNS" description:"DNS server for WireGuard network and resolving server address"`
 	DoT          string   `long:"dot" env:"DOT" description:"Port for DNS over TLS, used to resolve WireGuard server address if available"`
 	MTU          int      `long:"mtu" env:"MTU" default:"1280" description:"MTU for WireGuard network"`
 	Listen       string   `long:"listen" env:"LISTEN" default:"localhost:8080" description:"HTTP & SOCKS5 server address"`
-	ExitMode     string   `long:"exit-mode" env:"EXIT_MODE" default:"remote" choice:"remote" choice:"local" description:"Exit mode"`
+	ExitMode     string   `long:"exit-mode" env:"EXIT_MODE" choice:"remote" choice:"local" default:"remote" description:"Exit mode"`
 	Verbose      bool     `short:"v" long:"verbose" description:"Show verbose debug information"`
 
 	ClientID string `long:"client-id" env:"CLIENT_ID" hidden:"true"`
 }
 
 func main() {
-	opts := options{}
 	parser := flags.NewParser(&opts, flags.Default)
 	parser.Usage = `[OPTIONS]
 
@@ -64,21 +66,22 @@ Description:`
 	} else {
 		logger = device.NewLogger(device.LogLevelError, "")
 	}
+	logger.Verbosef("Options: %+v", opts)
 
-	dev, tnet, err := setupNet(opts)
+	dev, tnet, err := setupNet()
 	if err != nil {
 		logger.Errorf("Setup netstack: %v", err)
 		os.Exit(1)
 	}
 
-	listener, err := proxyListener(opts, tnet)
+	listener, err := proxyListener(tnet)
 	if err != nil {
 		logger.Errorf("Create net listener: %v", err)
 		os.Exit(1)
 	}
 
 	socksListener, httpListener := proxymux.SplitSOCKSAndHTTP(listener)
-	dialer := proxyDialer(opts, tnet)
+	dialer := proxyDialer(tnet)
 
 	httpProxy := &http.Server{Handler: statsHandler(httpproxy.Handler(dialer), dev)}
 	socksProxy := &socks5.Server{Dialer: dialer}
@@ -100,7 +103,7 @@ Description:`
 	os.Exit(1)
 }
 
-func proxyDialer(opts options, tnet *netstack.Net) (dialer func(ctx context.Context, network, address string) (net.Conn, error)) {
+func proxyDialer(tnet *netstack.Net) (dialer func(ctx context.Context, network, address string) (net.Conn, error)) {
 	switch opts.ExitMode {
 	case "local":
 		d := net.Dialer{}
@@ -111,7 +114,7 @@ func proxyDialer(opts options, tnet *netstack.Net) (dialer func(ctx context.Cont
 	return
 }
 
-func proxyListener(opts options, tnet *netstack.Net) (net.Listener, error) {
+func proxyListener(tnet *netstack.Net) (net.Listener, error) {
 	var tcpListener net.Listener
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp", opts.Listen)
@@ -135,21 +138,18 @@ func proxyListener(opts options, tnet *netstack.Net) (net.Listener, error) {
 	return tcpListener, nil
 }
 
-func setupNet(opts options) (*device.Device, *netstack.Net, error) {
+func setupNet() (*device.Device, *netstack.Net, error) {
 	ips := []net.IP{}
 	for _, s := range opts.ClientIPs {
-		ip := net.ParseIP(s)
-		if ip == nil {
-			return nil, nil, fmt.Errorf("invalid client ip: %s", s)
+		if ip := net.ParseIP(s); ip != nil {
+			ips = append(ips, ip)
 		}
-		ips = append(ips, ip)
+	}
+	if len(ips) == 0 {
+		return nil, nil, fmt.Errorf("not have a valid client ip: %s", opts.ClientIPs)
 	}
 	dnsServers := []net.IP{}
-	for _, s := range opts.DNS {
-		ip := net.ParseIP(s)
-		if ip == nil {
-			return nil, nil, fmt.Errorf("invalid dns ip: %s", s)
-		}
+	if ip := net.ParseIP(opts.DNS); ip != nil {
 		dnsServers = append(dnsServers, ip)
 	}
 	tun, tnet, err := netstack.CreateNetTUN(ips, dnsServers, opts.MTU)
@@ -158,7 +158,7 @@ func setupNet(opts options) (*device.Device, *netstack.Net, error) {
 	}
 	dev := device.NewDevice(tun, newConnBind(opts.ClientID), logger)
 
-	if err := ipcSet(dev, opts); err != nil {
+	if err := ipcSet(dev); err != nil {
 		return nil, nil, fmt.Errorf("config device: %w", err)
 	}
 

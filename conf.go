@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
 	"net"
 	"time"
 
@@ -28,10 +27,10 @@ type peer struct {
 	ipPort string
 }
 
-func newPeerEndpoint(opts options) (*peer, error) {
+func newPeerEndpoint() (*peer, error) {
 	pubKey, err := base64.StdEncoding.DecodeString(opts.PeerKey)
 	if err != nil {
-		return nil, fmt.Errorf("parse peer key: %w", err)
+		return nil, fmt.Errorf("parse peer public key: %w", err)
 	}
 
 	p := &peer{
@@ -39,13 +38,12 @@ func newPeerEndpoint(opts options) (*peer, error) {
 			Resolver: &net.Resolver{
 				PreferGo: true,
 				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-					if len(opts.DNS) > 0 {
-						host := opts.DNS[rand.Intn(len(opts.DNS))]
+					if opts.DNS != "" {
 						port := "53"
 						if opts.DoT != "" {
 							port = opts.DoT
 						}
-						address = net.JoinHostPort(host, port)
+						address = net.JoinHostPort(opts.DNS, port)
 					}
 					logger.Verbosef("Using %s to resolve peer endpoint", address)
 
@@ -67,6 +65,9 @@ func newPeerEndpoint(opts options) (*peer, error) {
 		addr:      opts.PeerEndpoint,
 	}
 	p.ipPort, err = p.resolveAddr()
+	if err != nil {
+		return nil, fmt.Errorf("resolve peer endpoint: %w", err)
+	}
 	return p, err
 }
 
@@ -104,27 +105,27 @@ func (p *peer) updateConf() (string, bool) {
 func (p *peer) resolveAddr() (string, error) {
 	c, err := p.dialer.Dial("udp", p.addr)
 	if err != nil {
-		return "", fmt.Errorf("dial %s: %w", p.addr, err)
+		return "", err
 	}
 	defer c.Close()
 	return c.RemoteAddr().String(), nil
 }
 
-func ipcSet(dev *device.Device, opts options) error {
+func ipcSet(dev *device.Device) error {
 	privateKey, err := base64.StdEncoding.DecodeString(opts.PrivateKey)
 	if err != nil {
-		return fmt.Errorf("parse private key: %w", err)
+		return fmt.Errorf("parse client private key: %w", err)
 	}
 	conf := "private_key=" + hex.EncodeToString(privateKey) + "\n"
 
-	peer, err := newPeerEndpoint(opts)
+	peer, err := newPeerEndpoint()
 	if err != nil {
 		return err
 	}
 	conf += peer.initConf()
 
 	if err := dev.IpcSet(conf); err != nil {
-		return fmt.Errorf("set device config: %w", err)
+		return err
 	}
 
 	if peer.addr != peer.ipPort {
@@ -138,7 +139,7 @@ func ipcSet(dev *device.Device, opts options) error {
 				}
 
 				if err := dev.IpcSet(conf); err != nil {
-					logger.Errorf("Set device config: %v", err)
+					logger.Errorf("Config device: %v", err)
 				}
 			}
 		}()
