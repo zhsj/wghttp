@@ -12,16 +12,10 @@ import (
 	"golang.zx2c4.com/wireguard/device"
 )
 
-const (
-	resolvePeerInterval = time.Second * 10
-	keepaliveInterval   = "10"
-)
-
 type peer struct {
 	dialer *net.Dialer
 
-	pubKey    string
-	keepalive bool
+	pubKey string
 
 	addr   string
 	ipPort string
@@ -60,9 +54,8 @@ func newPeerEndpoint() (*peer, error) {
 				},
 			},
 		},
-		pubKey:    hex.EncodeToString(pubKey),
-		keepalive: opts.ExitMode == "local",
-		addr:      opts.PeerEndpoint,
+		pubKey: hex.EncodeToString(pubKey),
+		addr:   opts.PeerEndpoint,
 	}
 	p.ipPort, err = p.resolveAddr()
 	if err != nil {
@@ -77,8 +70,8 @@ func (p *peer) initConf() string {
 	conf += "allowed_ip=0.0.0.0/0\n"
 	conf += "allowed_ip=::/0\n"
 
-	if p.keepalive {
-		conf += "persistent_keepalive_interval=" + keepaliveInterval + "\n"
+	if opts.KeepaliveInterval > 0 {
+		conf += fmt.Sprintf("persistent_keepalive_interval=%.f\n", opts.KeepaliveInterval.Seconds())
 	}
 
 	return conf
@@ -123,6 +116,7 @@ func ipcSet(dev *device.Device) error {
 		return err
 	}
 	conf += peer.initConf()
+	logger.Verbosef("Device config:\n%s", conf)
 
 	if err := dev.IpcSet(conf); err != nil {
 		return err
@@ -130,7 +124,7 @@ func ipcSet(dev *device.Device) error {
 
 	if peer.addr != peer.ipPort {
 		go func() {
-			c := time.Tick(resolvePeerInterval)
+			c := time.Tick(opts.ResolveInterval)
 
 			for range c {
 				conf, needUpdate := peer.updateConf()

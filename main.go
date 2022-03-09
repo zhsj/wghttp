@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jessevdk/go-flags"
 	"golang.zx2c4.com/wireguard/device"
@@ -32,12 +33,17 @@ type options struct {
 	PeerKey      string   `long:"peer-key" env:"PEER_KEY" description:"WireGuard server public key in base64 format"`
 	PrivateKey   string   `long:"private-key" env:"PRIVATE_KEY" description:"WireGuard client private key in base64 format"`
 	ClientIPs    []string `long:"client-ip" env:"CLIENT_IP" env-delim:"," description:"WireGuard client IP address"`
-	DNS          string   `long:"dns" env:"DNS" description:"DNS server for WireGuard network and resolving server address"`
-	DoT          string   `long:"dot" env:"DOT" description:"Port for DNS over TLS, used to resolve WireGuard server address if available"`
-	MTU          int      `long:"mtu" env:"MTU" default:"1280" description:"MTU for WireGuard network"`
-	Listen       string   `long:"listen" env:"LISTEN" default:"localhost:8080" description:"HTTP & SOCKS5 server address"`
-	ExitMode     string   `long:"exit-mode" env:"EXIT_MODE" choice:"remote" choice:"local" default:"remote" description:"Exit mode"`
-	Verbose      bool     `short:"v" long:"verbose" description:"Show verbose debug information"`
+
+	DNS string `long:"dns" env:"DNS" description:"DNS server for WireGuard network and resolving server address"`
+	DoT string `long:"dot" env:"DOT" description:"Port for DNS over TLS, used to resolve WireGuard server address if available"`
+	MTU int    `long:"mtu" env:"MTU" default:"1280" description:"MTU for WireGuard network"`
+
+	KeepaliveInterval time.Duration `long:"keepalive-interval" env:"KEEPALIVE_INTERVAL" description:"Interval for sending keepalive packet"`
+	ResolveInterval   time.Duration `long:"resolve-interval" env:"RESOLVE_INTERVAL" default:"1m" description:"Interval for resolving WireGuard server address"`
+
+	Listen   string `long:"listen" env:"LISTEN" default:"localhost:8080" description:"HTTP & SOCKS5 server address"`
+	ExitMode string `long:"exit-mode" env:"EXIT_MODE" choice:"remote" choice:"local" default:"remote" description:"Exit mode"`
+	Verbose  bool   `short:"v" long:"verbose" description:"Show verbose debug information"`
 
 	ClientID string `long:"client-id" env:"CLIENT_ID" hidden:"true"`
 }
