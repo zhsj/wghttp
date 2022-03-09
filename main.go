@@ -29,9 +29,10 @@ type options struct {
 	PeerKey      string   `long:"peer-key" env:"PEER_KEY" required:"true" description:"WireGuard server public key in base64 format"`
 	PrivateKey   string   `long:"private-key" env:"PRIVATE_KEY" required:"true" description:"WireGuard client private key in base64 format"`
 	ClientIPs    []string `long:"client-ip" env:"CLIENT_IP" env-delim:"," required:"true" description:"WireGuard client IP address"`
+	DNS          []string `long:"dns" env:"DNS" env-delim:"," description:"DNS servers for WireGuard network and resolving server address"`
+	DoT          string   `long:"dot" env:"DOT" description:"Port for DNS over TLS, used to resolve WireGuard server address if available"`
+	MTU          int      `long:"mtu" env:"MTU" default:"1280" description:"MTU for WireGuard network"`
 	Listen       string   `long:"listen" env:"LISTEN" default:"localhost:8080" description:"HTTP & SOCKS5 server address"`
-	DNS          []string `long:"dns" env:"DNS" env-delim:"," description:"DNS server IP address, only used in WireGuard"`
-	MTU          int      `long:"mtu" env:"MTU" default:"1280" description:"MTU"`
 	ExitMode     string   `long:"exit-mode" env:"EXIT_MODE" default:"remote" choice:"remote" choice:"local" description:"Exit mode"`
 	Verbose      bool     `short:"v" long:"verbose" description:"Show verbose debug information"`
 
@@ -70,14 +71,14 @@ Description:`
 		os.Exit(1)
 	}
 
-	listener, err := netListener(opts, tnet)
+	listener, err := proxyListener(opts, tnet)
 	if err != nil {
 		logger.Errorf("Create net listener: %v", err)
 		os.Exit(1)
 	}
 
 	socksListener, httpListener := proxymux.SplitSOCKSAndHTTP(listener)
-	dialer := netDialer(opts, tnet)
+	dialer := proxyDialer(opts, tnet)
 
 	httpProxy := &http.Server{Handler: statsHandler(httpproxy.Handler(dialer), dev)}
 	socksProxy := &socks5.Server{Dialer: dialer}
@@ -99,7 +100,18 @@ Description:`
 	os.Exit(1)
 }
 
-func netListener(opts options, tnet *netstack.Net) (net.Listener, error) {
+func proxyDialer(opts options, tnet *netstack.Net) (dialer func(ctx context.Context, network, address string) (net.Conn, error)) {
+	switch opts.ExitMode {
+	case "local":
+		d := net.Dialer{}
+		dialer = d.DialContext
+	case "remote":
+		dialer = tnet.DialContext
+	}
+	return
+}
+
+func proxyListener(opts options, tnet *netstack.Net) (net.Listener, error) {
 	var tcpListener net.Listener
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp", opts.Listen)
@@ -123,17 +135,6 @@ func netListener(opts options, tnet *netstack.Net) (net.Listener, error) {
 	return tcpListener, nil
 }
 
-func netDialer(opts options, tnet *netstack.Net) (dialer func(ctx context.Context, network, address string) (net.Conn, error)) {
-	switch opts.ExitMode {
-	case "local":
-		var d net.Dialer
-		dialer = d.DialContext
-	case "remote":
-		dialer = tnet.DialContext
-	}
-	return
-}
-
 func setupNet(opts options) (*device.Device, *netstack.Net, error) {
 	ips := []net.IP{}
 	for _, s := range opts.ClientIPs {
@@ -150,7 +151,6 @@ func setupNet(opts options) (*device.Device, *netstack.Net, error) {
 			return nil, nil, fmt.Errorf("invalid dns ip: %s", s)
 		}
 		dnsServers = append(dnsServers, ip)
-
 	}
 	tun, tnet, err := netstack.CreateNetTUN(ips, dnsServers, opts.MTU)
 	if err != nil {
