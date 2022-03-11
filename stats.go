@@ -53,7 +53,7 @@ func statsHandler(next http.Handler, dev *device.Device) http.Handler {
 			}
 			resp, _ := json.MarshalIndent(stats, "", "  ")
 			rw.Header().Set("Content-Type", "application/json")
-			rw.Write(append(resp, '\n'))
+			_, _ = rw.Write(append(resp, '\n'))
 		}
 	})
 }

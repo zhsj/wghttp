@@ -32,16 +32,18 @@ func newPeerEndpoint() (*peer, error) {
 			Resolver: &net.Resolver{
 				PreferGo: true,
 				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+					dot := false
 					if opts.DNS != "" {
 						port := "53"
 						if opts.DoT != "" {
 							port = opts.DoT
+							dot = true
 						}
 						address = net.JoinHostPort(opts.DNS, port)
 					}
-					logger.Verbosef("Using %s to resolve peer endpoint", address)
+					logger.Verbosef("Using %s (DoT: %t) to resolve peer endpoint", address, dot)
 
-					if opts.DoT == "" {
+					if !dot {
 						var d net.Dialer
 						return d.DialContext(ctx, network, address)
 					}

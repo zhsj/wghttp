@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jessevdk/go-flags"
+	"golang.zx2c4.com/go118/netip"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun/netstack"
 
@@ -34,7 +35,7 @@ type options struct {
 	PrivateKey   string   `long:"private-key" env:"PRIVATE_KEY" description:"WireGuard client private key in base64 format"`
 	ClientIPs    []string `long:"client-ip" env:"CLIENT_IP" env-delim:"," description:"WireGuard client IP address"`
 
-	DNS string `long:"dns" env:"DNS" description:"DNS server for WireGuard network and resolving server address"`
+	DNS string `long:"dns" env:"DNS" description:"DNS IP for WireGuard network and resolving server address"`
 	DoT string `long:"dot" env:"DOT" description:"Port for DNS over TLS, used to resolve WireGuard server address if available"`
 	MTU int    `long:"mtu" env:"MTU" default:"1280" description:"MTU for WireGuard network"`
 
@@ -145,20 +146,25 @@ func proxyListener(tnet *netstack.Net) (net.Listener, error) {
 }
 
 func setupNet() (*device.Device, *netstack.Net, error) {
-	ips := []net.IP{}
+	if len(opts.ClientIPs) == 0 {
+		return nil, nil, fmt.Errorf("client IP is required")
+	}
+	var clientIPs, dnsServers []netip.Addr
 	for _, s := range opts.ClientIPs {
-		if ip := net.ParseIP(s); ip != nil {
-			ips = append(ips, ip)
+		ip, err := netip.ParseAddr(s)
+		if err != nil {
+			return nil, nil, fmt.Errorf("parse client IP: %w", err)
 		}
+		clientIPs = append(clientIPs, ip)
 	}
-	if len(ips) == 0 {
-		return nil, nil, fmt.Errorf("not have a valid client ip: %s", opts.ClientIPs)
-	}
-	dnsServers := []net.IP{}
-	if ip := net.ParseIP(opts.DNS); ip != nil {
+	if opts.DNS != "" {
+		ip, err := netip.ParseAddr(opts.DNS)
+		if err != nil {
+			return nil, nil, fmt.Errorf("parse DNS IP: %w", err)
+		}
 		dnsServers = append(dnsServers, ip)
 	}
-	tun, tnet, err := netstack.CreateNetTUN(ips, dnsServers, opts.MTU)
+	tun, tnet, err := netstack.CreateNetTUN(clientIPs, dnsServers, opts.MTU)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create netstack tun: %w", err)
 	}
