@@ -77,7 +77,7 @@ const (
 type Server struct {
 	// Logf optionally specifies the logger to use.
 	// If nil, the standard logger is used.
-	Logf func(format string, args ...interface{})
+	Logf func(format string, args ...any)
 
 	// Dialer optionally specifies the dialer to use for outgoing connections.
 	// If nil, the net package's standard dialer is used.
@@ -93,7 +93,7 @@ func (s *Server) dial(ctx context.Context, network, addr string) (net.Conn, erro
 	return dial(ctx, network, addr)
 }
 
-func (s *Server) logf(format string, args ...interface{}) {
+func (s *Server) logf(format string, args ...any) {
 	logf := s.Logf
 	if logf == nil {
 		logf = log.Printf
@@ -110,11 +110,11 @@ func (s *Server) Serve(l net.Listener) error {
 			return err
 		}
 		go func() {
+			defer c.Close()
 			conn := &Conn{clientConn: c, srv: s}
 			err := conn.Run()
 			if err != nil {
 				s.logf("client connection failed: %v", err)
-				conn.clientConn.Close()
 			}
 		}()
 	}
