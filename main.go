@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/jessevdk/go-flags"
-	"golang.zx2c4.com/go118/netip"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun/netstack"
 
