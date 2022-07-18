@@ -1,14 +1,13 @@
 package main
 
 import (
-	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"net"
 	"time"
 
+	"github.com/zhsj/wghttp/internal/resolver"
 	"golang.zx2c4.com/wireguard/device"
 )
 
@@ -16,6 +15,7 @@ type peer struct {
 	dialer *net.Dialer
 
 	pubKey string
+	psk    string
 
 	addr   string
 	ipPort string
@@ -26,37 +26,17 @@ func newPeerEndpoint() (*peer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse peer public key: %w", err)
 	}
+	psk, err := base64.StdEncoding.DecodeString(opts.PresharedKey)
+	if err != nil {
+		return nil, fmt.Errorf("parse preshared key: %w", err)
+	}
 
 	p := &peer{
 		dialer: &net.Dialer{
-			Resolver: &net.Resolver{
-				PreferGo: true,
-				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-					dot := false
-					if opts.DNS != "" {
-						port := "53"
-						if opts.DoT != "" {
-							port = opts.DoT
-							dot = true
-						}
-						address = net.JoinHostPort(opts.DNS, port)
-					}
-					logger.Verbosef("Using %s (DoT: %t) to resolve peer endpoint", address, dot)
-
-					if !dot {
-						var d net.Dialer
-						return d.DialContext(ctx, network, address)
-					}
-					d := tls.Dialer{
-						Config: &tls.Config{
-							InsecureSkipVerify: true,
-						},
-					}
-					return d.DialContext(ctx, "tcp", address)
-				},
-			},
+			Resolver: resolver.New(opts.ResolveDNS),
 		},
 		pubKey: hex.EncodeToString(pubKey),
+		psk:    hex.EncodeToString(psk),
 		addr:   opts.PeerEndpoint,
 	}
 	p.ipPort, err = p.resolveAddr()
@@ -74,6 +54,9 @@ func (p *peer) initConf() string {
 
 	if opts.KeepaliveInterval > 0 {
 		conf += fmt.Sprintf("persistent_keepalive_interval=%.f\n", opts.KeepaliveInterval.Seconds())
+	}
+	if p.psk != "" {
+		conf += "preshared_key=" + p.psk + "\n"
 	}
 
 	return conf
@@ -112,6 +95,9 @@ func ipcSet(dev *device.Device) error {
 		return fmt.Errorf("parse client private key: %w", err)
 	}
 	conf := "private_key=" + hex.EncodeToString(privateKey) + "\n"
+	if opts.ClientPort != 0 {
+		conf += fmt.Sprintf("listen_port=%d\n", opts.ClientPort)
+	}
 
 	peer, err := newPeerEndpoint()
 	if err != nil {

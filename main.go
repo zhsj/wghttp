@@ -30,17 +30,19 @@ var (
 )
 
 type options struct {
-	PeerEndpoint string   `long:"peer-endpoint" env:"PEER_ENDPOINT" description:"WireGuard server address"`
-	PeerKey      string   `long:"peer-key" env:"PEER_KEY" description:"WireGuard server public key in base64 format"`
-	PrivateKey   string   `long:"private-key" env:"PRIVATE_KEY" description:"WireGuard client private key in base64 format"`
-	ClientIPs    []string `long:"client-ip" env:"CLIENT_IP" env-delim:"," description:"WireGuard client IP address"`
+	ClientIPs  []string `long:"client-ip" env:"CLIENT_IP" env-delim:"," description:"[Interface].Address\tfor WireGuard client (can be set multiple times)"`
+	ClientPort int      `long:"client-port" env:"CLIENT_PORT" description:"[Interface].ListenPort\tfor WireGuard client (optional)"`
+	PrivateKey string   `long:"private-key" env:"PRIVATE_KEY" description:"[Interface].PrivateKey\tfor WireGuard client (format: base64)"`
+	DNS        string   `long:"dns" env:"DNS" description:"[Interface].DNS\tfor WireGuard network (format: IP)"`
+	MTU        int      `long:"mtu" env:"MTU" default:"1280" description:"[Interface].MTU\tfor WireGuard network"`
 
-	DNS string `long:"dns" env:"DNS" description:"DNS IP for WireGuard network and resolving server address"`
-	DoT string `long:"dot" env:"DOT" description:"Port for DNS over TLS, used to resolve WireGuard server address if available"`
-	MTU int    `long:"mtu" env:"MTU" default:"1280" description:"MTU for WireGuard network"`
+	PeerEndpoint      string        `long:"peer-endpoint" env:"PEER_ENDPOINT" description:"[Peer].Endpoint\tfor WireGuard server (format: host:port)"`
+	PeerKey           string        `long:"peer-key" env:"PEER_KEY" description:"[Peer].PublicKey\tfor WireGuard server (format: base64)"`
+	PresharedKey      string        `long:"preshared-key" env:"PRESHARED_KEY" description:"[Peer].PresharedKey\tfor WireGuard network (optional, format: base64)"`
+	KeepaliveInterval time.Duration `long:"keepalive-interval" env:"KEEPALIVE_INTERVAL" description:"[Peer].PersistentKeepalive\tfor WireGuard network (optional)"`
 
-	KeepaliveInterval time.Duration `long:"keepalive-interval" env:"KEEPALIVE_INTERVAL" description:"Interval for sending keepalive packet"`
-	ResolveInterval   time.Duration `long:"resolve-interval" env:"RESOLVE_INTERVAL" default:"1m" description:"Interval for resolving WireGuard server address"`
+	ResolveDNS      string        `long:"resolve-dns" env:"RESOLVE_DNS" description:"DNS for resolving WireGuard server address (optional, format: protocol://ip:port)\nProtocol includes tcp, udp, tls(DNS over TLS) and https(DNS over HTTPS)"`
+	ResolveInterval time.Duration `long:"resolve-interval" env:"RESOLVE_INTERVAL" default:"1m" description:"Interval for resolving WireGuard server address (set 0 to disable)"`
 
 	Listen   string `long:"listen" env:"LISTEN" default:"localhost:8080" description:"HTTP & SOCKS5 server address"`
 	ExitMode string `long:"exit-mode" env:"EXIT_MODE" choice:"remote" choice:"local" default:"remote" description:"Exit mode"`
