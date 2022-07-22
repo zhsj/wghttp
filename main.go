@@ -6,7 +6,6 @@ import (
 	_ "embed"
 	"fmt"
 	"net"
-	"net/http"
 	"net/netip"
 	"os"
 	"strings"
@@ -16,9 +15,7 @@ import (
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun/netstack"
 
-	"github.com/zhsj/wghttp/internal/third_party/tailscale/httpproxy"
-	"github.com/zhsj/wghttp/internal/third_party/tailscale/proxymux"
-	"github.com/zhsj/wghttp/internal/third_party/tailscale/socks5"
+	"github.com/zhsj/wghttp/internal/proxy"
 )
 
 //go:embed README.md
@@ -33,7 +30,7 @@ type options struct {
 	ClientIPs  []string `long:"client-ip" env:"CLIENT_IP" env-delim:"," description:"[Interface].Address\tfor WireGuard client (can be set multiple times)"`
 	ClientPort int      `long:"client-port" env:"CLIENT_PORT" description:"[Interface].ListenPort\tfor WireGuard client (optional)"`
 	PrivateKey string   `long:"private-key" env:"PRIVATE_KEY" description:"[Interface].PrivateKey\tfor WireGuard client (format: base64)"`
-	DNS        string   `long:"dns" env:"DNS" description:"[Interface].DNS\tfor WireGuard network (format: IP)"`
+	DNS        string   `long:"dns" env:"DNS" description:"[Interface].DNS\tfor WireGuard network (format: protocol://ip:port)\nProtocol includes udp(default), tcp, tls(DNS over TLS) and https(DNS over HTTPS)"`
 	MTU        int      `long:"mtu" env:"MTU" default:"1280" description:"[Interface].MTU\tfor WireGuard network"`
 
 	PeerEndpoint      string        `long:"peer-endpoint" env:"PEER_ENDPOINT" description:"[Peer].Endpoint\tfor WireGuard server (format: host:port)"`
@@ -41,7 +38,7 @@ type options struct {
 	PresharedKey      string        `long:"preshared-key" env:"PRESHARED_KEY" description:"[Peer].PresharedKey\tfor WireGuard network (optional, format: base64)"`
 	KeepaliveInterval time.Duration `long:"keepalive-interval" env:"KEEPALIVE_INTERVAL" description:"[Peer].PersistentKeepalive\tfor WireGuard network (optional)"`
 
-	ResolveDNS      string        `long:"resolve-dns" env:"RESOLVE_DNS" description:"DNS for resolving WireGuard server address (optional, format: protocol://ip:port)\nProtocol includes tcp, udp, tls(DNS over TLS) and https(DNS over HTTPS)"`
+	ResolveDNS      string        `long:"resolve-dns" env:"RESOLVE_DNS" description:"DNS for resolving WireGuard server address (optional, format: protocol://ip:port)\nProtocol includes udp(default), tcp, tls(DNS over TLS) and https(DNS over HTTPS)"`
 	ResolveInterval time.Duration `long:"resolve-interval" env:"RESOLVE_INTERVAL" default:"1m" description:"Interval for resolving WireGuard server address (set 0 to disable)"`
 
 	Listen   string `long:"listen" env:"LISTEN" default:"localhost:8080" description:"HTTP & SOCKS5 server address"`
@@ -89,26 +86,11 @@ Description:`
 		os.Exit(1)
 	}
 
-	socksListener, httpListener := proxymux.SplitSOCKSAndHTTP(listener)
-	dialer := proxyDialer(tnet)
+	proxier := proxy.Proxy{
+		Dial: proxyDialer(tnet), DNS: opts.DNS, Stats: stats(dev),
+	}
+	proxier.Serve(listener)
 
-	httpProxy := &http.Server{Handler: statsHandler(httpproxy.Handler(dialer), dev)}
-	socksProxy := &socks5.Server{Dialer: dialer}
-
-	errc := make(chan error, 2)
-	go func() {
-		if err := httpProxy.Serve(httpListener); err != nil {
-			logger.Errorf("Serving http proxy: %v", err)
-			errc <- err
-		}
-	}()
-	go func() {
-		if err := socksProxy.Serve(socksListener); err != nil {
-			logger.Errorf("Serving socks5 proxy: %v", err)
-			errc <- err
-		}
-	}()
-	<-errc
 	os.Exit(1)
 }
 
@@ -151,7 +133,7 @@ func setupNet() (*device.Device, *netstack.Net, error) {
 	if len(opts.ClientIPs) == 0 {
 		return nil, nil, fmt.Errorf("client IP is required")
 	}
-	var clientIPs, dnsServers []netip.Addr
+	var clientIPs []netip.Addr
 	for _, s := range opts.ClientIPs {
 		ip, err := netip.ParseAddr(s)
 		if err != nil {
@@ -159,14 +141,8 @@ func setupNet() (*device.Device, *netstack.Net, error) {
 		}
 		clientIPs = append(clientIPs, ip)
 	}
-	if opts.DNS != "" {
-		ip, err := netip.ParseAddr(opts.DNS)
-		if err != nil {
-			return nil, nil, fmt.Errorf("parse DNS IP: %w", err)
-		}
-		dnsServers = append(dnsServers, ip)
-	}
-	tun, tnet, err := netstack.CreateNetTUN(clientIPs, dnsServers, opts.MTU)
+
+	tun, tnet, err := netstack.CreateNetTUN(clientIPs, nil, opts.MTU)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create netstack tun: %w", err)
 	}
