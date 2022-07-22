@@ -4,33 +4,46 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
+	"net/http"
 	"strings"
 )
 
-func New(addr string) *net.Resolver {
+// PreferGo works on Windows since go1.19, https://github.com/golang/go/issues/33097
+
+func New(addr string, dialContext func(context.Context, string, string) (net.Conn, error)) *net.Resolver {
 	switch {
 	case strings.HasPrefix(addr, "tls://"):
 		return &net.Resolver{
 			PreferGo: true,
 			Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				d := tls.Dialer{}
-				address := addr[len("tls://"):]
-				return d.DialContext(ctx, "tcp", withDefaultPort(address, "853"))
+				address := withDefaultPort(addr[len("tls://"):], "853")
+				conn, err := dialContext(ctx, "tcp", address)
+				if err != nil {
+					return nil, err
+				}
+				host, _, _ := net.SplitHostPort(address)
+				c := tls.Client(conn, &tls.Config{
+					ServerName: host,
+				})
+				return c, nil
 			},
 		}
 	case strings.HasPrefix(addr, "https://"):
+		c := &http.Client{
+			Transport: &http.Transport{
+				DialContext: dialContext,
+			},
+		}
 		return &net.Resolver{
 			PreferGo: true,
-			Dial: func(_ context.Context, _, _ string) (net.Conn, error) {
-				conn := &dohConn{addr: addr}
-				return conn, nil
+			Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return newDoHConn(ctx, c, addr)
 			},
 		}
 	case addr != "":
 		return &net.Resolver{
 			PreferGo: true,
 			Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				d := net.Dialer{}
 				address := addr
 				network := "udp"
 
@@ -39,7 +52,7 @@ func New(addr string) *net.Resolver {
 					address = addr[len("tcp://"):]
 				}
 
-				return d.DialContext(ctx, network, withDefaultPort(address, "53"))
+				return dialContext(ctx, network, withDefaultPort(address, "53"))
 			},
 		}
 	default:

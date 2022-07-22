@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -33,7 +34,14 @@ func newPeerEndpoint() (*peer, error) {
 
 	p := &peer{
 		dialer: &net.Dialer{
-			Resolver: resolver.New(opts.ResolveDNS),
+			Resolver: resolver.New(
+				opts.ResolveDNS,
+				func(ctx context.Context, network, address string) (net.Conn, error) {
+					netConn, err := (&net.Dialer{}).DialContext(ctx, network, address)
+					logger.Verbosef("Using %s to resolve peer endpoint: %v", opts.ResolveDNS, err)
+					return netConn, err
+				},
+			),
 		},
 		pubKey: hex.EncodeToString(pubKey),
 		psk:    hex.EncodeToString(psk),

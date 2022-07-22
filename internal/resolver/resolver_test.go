@@ -26,7 +26,7 @@ func TestResolve(t *testing.T) {
 	} {
 		t.Run(server, func(t *testing.T) {
 			d := &net.Dialer{
-				Resolver: New(server),
+				Resolver: New(server, (&net.Dialer{}).DialContext),
 			}
 			c, err := d.Dial("tcp4", "www.example.com:80")
 			if err != nil {
