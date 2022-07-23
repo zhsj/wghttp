@@ -1,7 +1,7 @@
 FROM --platform=$BUILDPLATFORM golang as builder
 WORKDIR /app
 COPY . .
-RUN go mod vendor
+RUN go mod download
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOARCH=$TARGETARCH go build -v -trimpath -ldflags="-w -s" .
 
