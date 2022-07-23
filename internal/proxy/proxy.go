@@ -51,7 +51,7 @@ func dialWithDNS(dial dialer, dns string) dialer {
 			}
 		}
 
-		ips, err := resolv.LookupHost(ctx, host)
+		ips, err := resolv.LookupNetIP(ctx, network, host)
 		if err != nil {
 			return nil, err
 		}
@@ -61,7 +61,7 @@ func dialWithDNS(dial dialer, dns string) dialer {
 			conn    net.Conn
 		)
 		for _, ip := range ips {
-			addr := net.JoinHostPort(ip, port)
+			addr := net.JoinHostPort(ip.String(), port)
 			conn, lastErr = dial(ctx, network, addr)
 			if lastErr == nil {
 				return conn, nil

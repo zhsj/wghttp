@@ -3,61 +3,109 @@ package resolver
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 )
 
-// PreferGo works on Windows since go1.19, https://github.com/golang/go/issues/33097
+var errNotRetry = errors.New("not retry")
 
-func New(addr string, dialContext func(context.Context, string, string) (net.Conn, error)) *net.Resolver {
+type Resolver struct {
+	sysAddr, addr string
+	network       string
+	tlsConfig     *tls.Config
+	httpClient    *http.Client
+
+	r *net.Resolver
+}
+
+func (r *Resolver) LookupNetIP(ctx context.Context, network, host string) ([]netip.Addr, error) {
+	ipNetwork := network
+	switch network {
+	case "tcp", "udp":
+		ipNetwork = "ip"
+	case "tcp4", "udp4":
+		ipNetwork = "ip4"
+	case "tcp6", "udp6":
+		ipNetwork = "ip6"
+	}
+
+	return r.r.LookupNetIP(ctx, ipNetwork, host)
+}
+
+func New(dns string, dial func(ctx context.Context, network, address string) (net.Conn, error)) *Resolver {
+	r := &Resolver{}
 	switch {
-	case strings.HasPrefix(addr, "tls://"):
-		return &net.Resolver{
+	case strings.HasPrefix(dns, "tls://"):
+		r.addr = withDefaultPort(dns[len("tls://"):], "853")
+		host, _, _ := net.SplitHostPort(r.addr)
+		r.tlsConfig = &tls.Config{
+			ServerName: host,
+		}
+		r.r = &net.Resolver{
 			PreferGo: true,
-			Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				address := withDefaultPort(addr[len("tls://"):], "853")
-				conn, err := dialContext(ctx, "tcp", address)
+			Dial: func(ctx context.Context, _, address string) (net.Conn, error) {
+				if r.sysAddr == "" {
+					r.sysAddr = address
+				}
+				if r.sysAddr != address {
+					return nil, errNotRetry
+				}
+				conn, err := dial(ctx, "tcp", r.addr)
 				if err != nil {
 					return nil, err
 				}
-				host, _, _ := net.SplitHostPort(address)
-				c := tls.Client(conn, &tls.Config{
-					ServerName: host,
-				})
-				return c, nil
+				return tls.Client(conn, r.tlsConfig), nil
 			},
 		}
-	case strings.HasPrefix(addr, "https://"):
-		c := &http.Client{
+	case strings.HasPrefix(dns, "https://"):
+		r.httpClient = &http.Client{
 			Transport: &http.Transport{
-				DialContext: dialContext,
+				DialContext: dial,
 			},
 		}
-		return &net.Resolver{
+		r.r = &net.Resolver{
 			PreferGo: true,
-			Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				return newDoHConn(ctx, c, addr)
-			},
-		}
-	case addr != "":
-		return &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				address := addr
-				network := "udp"
-
-				if strings.HasPrefix(addr, "tcp://") || strings.HasPrefix(addr, "udp://") {
-					network = addr[:len("tcp")]
-					address = addr[len("tcp://"):]
+			Dial: func(ctx context.Context, _, address string) (net.Conn, error) {
+				if r.sysAddr == "" {
+					r.sysAddr = address
+				}
+				if r.sysAddr != address {
+					return nil, errNotRetry
 				}
 
-				return dialContext(ctx, network, withDefaultPort(address, "53"))
+				return newDoHConn(ctx, r.httpClient, dns)
+			},
+		}
+	case dns != "":
+		r.addr = dns
+		r.network = "udp"
+
+		if strings.HasPrefix(dns, "tcp://") || strings.HasPrefix(dns, "udp://") {
+			r.addr = dns[len("tcp://"):]
+			r.network = dns[:len("tcp")]
+		}
+		r.addr = withDefaultPort(r.addr, "53")
+
+		r.r = &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, _, address string) (net.Conn, error) {
+				if r.sysAddr == "" {
+					r.sysAddr = address
+				}
+				if r.sysAddr != address {
+					return nil, errNotRetry
+				}
+
+				return dial(ctx, r.network, r.addr)
 			},
 		}
 	default:
-		return &net.Resolver{}
+		r.r = &net.Resolver{}
 	}
+	return r
 }
 
 func withDefaultPort(addr, port string) string {

@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"net/netip"
+	"strconv"
 	"time"
 
 	"github.com/zhsj/wghttp/internal/resolver"
@@ -13,13 +15,14 @@ import (
 )
 
 type peer struct {
-	dialer *net.Dialer
+	resolver *resolver.Resolver
 
 	pubKey string
 	psk    string
 
-	addr   string
-	ipPort string
+	host string
+	ip   netip.Addr
+	port uint16
 }
 
 func newPeerEndpoint() (*peer, error) {
@@ -33,30 +36,45 @@ func newPeerEndpoint() (*peer, error) {
 	}
 
 	p := &peer{
-		dialer: &net.Dialer{
-			Resolver: resolver.New(
-				opts.ResolveDNS,
-				func(ctx context.Context, network, address string) (net.Conn, error) {
-					netConn, err := (&net.Dialer{}).DialContext(ctx, network, address)
-					logger.Verbosef("Using %s to resolve peer endpoint: %v", opts.ResolveDNS, err)
-					return netConn, err
-				},
-			),
-		},
 		pubKey: hex.EncodeToString(pubKey),
 		psk:    hex.EncodeToString(psk),
-		addr:   opts.PeerEndpoint,
 	}
-	p.ipPort, err = p.resolveAddr()
+	host, port, err := net.SplitHostPort(opts.PeerEndpoint)
 	if err != nil {
-		return nil, fmt.Errorf("resolve peer endpoint: %w", err)
+		return nil, fmt.Errorf("parse peer endpoint: %w", err)
 	}
+	port16, err := strconv.ParseUint(port, 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("parse peer endpoint port: %w", err)
+	}
+	p.host = host
+	p.port = uint16(port16)
+
+	p.ip, err = netip.ParseAddr(p.host)
+	if err == nil {
+		return p, nil
+	}
+
+	p.resolver = resolver.New(
+		opts.ResolveDNS,
+		func(ctx context.Context, network, address string) (net.Conn, error) {
+			netConn, err := (&net.Dialer{}).DialContext(ctx, network, address)
+			logger.Verbosef("Using %s to resolve peer endpoint: %v", opts.ResolveDNS, err)
+			return netConn, err
+		},
+	)
+
+	p.ip, err = p.resolveHost()
+	if err != nil {
+		return nil, fmt.Errorf("resolve peer endpoint ip: %w", err)
+	}
+
 	return p, err
 }
 
 func (p *peer) initConf() string {
 	conf := "public_key=" + p.pubKey + "\n"
-	conf += "endpoint=" + p.ipPort + "\n"
+	conf += "endpoint=" + netip.AddrPortFrom(p.ip, p.port).String() + "\n"
 	conf += "allowed_ip=0.0.0.0/0\n"
 	conf += "allowed_ip=::/0\n"
 
@@ -71,30 +89,38 @@ func (p *peer) initConf() string {
 }
 
 func (p *peer) updateConf() (string, bool) {
-	newIPPort, err := p.resolveAddr()
+	newIP, err := p.resolveHost()
 	if err != nil {
 		logger.Verbosef("Resolve peer endpoint: %v", err)
 		return "", false
 	}
-	if p.ipPort == newIPPort {
+	if p.ip == newIP {
 		return "", false
 	}
-	p.ipPort = newIPPort
-	logger.Verbosef("PeerEndpoint is changed to: %s", p.ipPort)
+	p.ip = newIP
+	logger.Verbosef("PeerEndpoint is changed to: %s", p.ip)
 
 	conf := "public_key=" + p.pubKey + "\n"
 	conf += "update_only=true\n"
-	conf += "endpoint=" + p.ipPort + "\n"
+	conf += "endpoint=" + netip.AddrPortFrom(p.ip, p.port).String() + "\n"
 	return conf, true
 }
 
-func (p *peer) resolveAddr() (string, error) {
-	c, err := p.dialer.Dial("udp", p.addr)
+func (p *peer) resolveHost() (netip.Addr, error) {
+	ips, err := p.resolver.LookupNetIP(context.Background(), "ip", p.host)
 	if err != nil {
-		return "", err
+		return netip.Addr{}, fmt.Errorf("resolve ip for %s: %w", p.host, err)
 	}
-	defer c.Close()
-	return c.RemoteAddr().String(), nil
+	for _, ip := range ips {
+		conn, err := net.DialUDP("udp", nil, net.UDPAddrFromAddrPort(netip.AddrPortFrom(ip, p.port)))
+		if err == nil {
+			conn.Close()
+			return ip, nil
+		} else {
+			logger.Verbosef("Dial %s: %s", ip, err)
+		}
+	}
+	return netip.Addr{}, fmt.Errorf("no available ip for %s", p.host)
 }
 
 func ipcSet(dev *device.Device) error {
@@ -118,7 +144,7 @@ func ipcSet(dev *device.Device) error {
 		return err
 	}
 
-	if peer.addr != peer.ipPort {
+	if peer.resolver != nil {
 		go func() {
 			c := time.Tick(opts.ResolveInterval)
 

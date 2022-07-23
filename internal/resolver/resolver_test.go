@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"context"
 	"net"
 	"testing"
 )
@@ -25,14 +26,13 @@ func TestResolve(t *testing.T) {
 		"https://223.5.5.5:443/dns-query",
 	} {
 		t.Run(server, func(t *testing.T) {
-			d := &net.Dialer{
-				Resolver: New(server, (&net.Dialer{}).DialContext),
-			}
-			c, err := d.Dial("tcp4", "www.example.com:80")
+			r := New(server, (&net.Dialer{}).DialContext)
+			ips, err := r.LookupNetIP(context.TODO(), "ip4", "www.example.com")
+
 			if err != nil {
 				t.Error(err)
 			} else {
-				t.Logf("got %s", c.RemoteAddr())
+				t.Logf("got %s", ips)
 			}
 		})
 	}
