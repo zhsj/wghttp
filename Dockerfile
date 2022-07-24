@@ -18,13 +18,18 @@ RUN <<EOF
   git archive --prefix=github.com/zhsj/wghttp@"$tag"/ -o "$file_prefix".zip HEAD
 EOF
 
-ARG TARGETARCH
+ARG TARGETARCH TARGETVARIANT
 RUN <<EOF
   set -ex
   export CGO_ENABLED=0
-  export GOARCH=$TARGETARCH
   export GOPROXY=file://$(go env GOMODCACHE)/cache/download
   export GOSUMDB=off
+  export GOARCH="$TARGETARCH"
+  case "$TARGETARCH" in
+    arm|arm64)
+      export GOARM=$(echo "$TARGETVARIANT"|sed 's/^v//')
+      ;;
+  esac
   tag=$(git describe --tags --abbrev=8 --always)
   go install -trimpath -ldflags="-w -s" github.com/zhsj/wghttp@"$tag"
   cross_bin=/go/bin/$(go env GOOS)_$(go env GOARCH)/wghttp
