@@ -60,7 +60,7 @@ Set `--resolve-interval=` to `0` to disable this behaviour.
 
 ## DNS server format
 
-Both `--dns=` and `--resolve-dns=` options supports following format:
+Both `--dns=` and `--resolve-dns=` options support following format:
 
 - Plain DNS
 

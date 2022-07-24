@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 
@@ -25,8 +26,14 @@ func stats(dev *device.Device) func() (any, error) {
 			SentBytes              int64
 
 			NumGoroutine int
+			Version      string
 		}{
 			NumGoroutine: runtime.NumGoroutine(),
+		}
+
+		info, ok := debug.ReadBuildInfo()
+		if ok {
+			stats.Version = info.Main.Version
 		}
 
 		scanner := bufio.NewScanner(&buf)
