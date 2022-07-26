@@ -112,6 +112,8 @@ func (p *peer) resolveHost() (netip.Addr, error) {
 		return netip.Addr{}, fmt.Errorf("resolve ip for %s: %w", p.host, err)
 	}
 	for _, ip := range ips {
+		// netstack doesn't seem to understand IPv4-mapped IPv6 addresses.
+		ip = ip.Unmap()
 		conn, err := net.DialUDP("udp", nil, net.UDPAddrFromAddrPort(netip.AddrPortFrom(ip, p.port)))
 		if err == nil {
 			conn.Close()
