@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/jessevdk/go-flags"
 	"golang.zx2c4.com/wireguard/device"
@@ -26,28 +26,6 @@ var (
 	opts   options
 )
 
-type options struct {
-	ClientIPs  []string `long:"client-ip" env:"CLIENT_IP" env-delim:"," description:"[Interface].Address\tfor WireGuard client (can be set multiple times)"`
-	ClientPort int      `long:"client-port" env:"CLIENT_PORT" description:"[Interface].ListenPort\tfor WireGuard client (optional)"`
-	PrivateKey string   `long:"private-key" env:"PRIVATE_KEY" description:"[Interface].PrivateKey\tfor WireGuard client (format: base64)"`
-	DNS        string   `long:"dns" env:"DNS" description:"[Interface].DNS\tfor WireGuard network (format: protocol://ip:port)\nProtocol includes udp(default), tcp, tls(DNS over TLS) and https(DNS over HTTPS)"`
-	MTU        int      `long:"mtu" env:"MTU" default:"1280" description:"[Interface].MTU\tfor WireGuard network"`
-
-	PeerEndpoint      string        `long:"peer-endpoint" env:"PEER_ENDPOINT" description:"[Peer].Endpoint\tfor WireGuard server (format: host:port)"`
-	PeerKey           string        `long:"peer-key" env:"PEER_KEY" description:"[Peer].PublicKey\tfor WireGuard server (format: base64)"`
-	PresharedKey      string        `long:"preshared-key" env:"PRESHARED_KEY" description:"[Peer].PresharedKey\tfor WireGuard network (optional, format: base64)"`
-	KeepaliveInterval time.Duration `long:"keepalive-interval" env:"KEEPALIVE_INTERVAL" description:"[Peer].PersistentKeepalive\tfor WireGuard network (optional)"`
-
-	ResolveDNS      string        `long:"resolve-dns" env:"RESOLVE_DNS" description:"DNS for resolving WireGuard server address (optional, format: protocol://ip:port)\nProtocol includes udp(default), tcp, tls(DNS over TLS) and https(DNS over HTTPS)"`
-	ResolveInterval time.Duration `long:"resolve-interval" env:"RESOLVE_INTERVAL" default:"1m" description:"Interval for resolving WireGuard server address (set 0 to disable)"`
-
-	Listen   string `long:"listen" env:"LISTEN" default:"localhost:8080" description:"HTTP & SOCKS5 server address"`
-	ExitMode string `long:"exit-mode" env:"EXIT_MODE" choice:"remote" choice:"local" default:"remote" description:"Exit mode"`
-	Verbose  bool   `short:"v" long:"verbose" description:"Show verbose debug information"`
-
-	ClientID string `long:"client-id" env:"CLIENT_ID" hidden:"true"`
-}
-
 func main() {
 	parser := flags.NewParser(&opts, flags.Default)
 	parser.Usage = `[OPTIONS]
@@ -60,10 +38,9 @@ Description:`
 	parser.Usage = strings.TrimSuffix(parser.Usage, "\n")
 	if _, err := parser.Parse(); err != nil {
 		code := 1
-		if fe, ok := err.(*flags.Error); ok {
-			if fe.Type == flags.ErrHelp {
-				code = 0
-			}
+		fe := &flags.Error{}
+		if errors.As(err, &fe) && fe.Type == flags.ErrHelp {
+			code = 0
 		}
 		os.Exit(code)
 	}
@@ -130,18 +107,10 @@ func proxyListener(tnet *netstack.Net) (net.Listener, error) {
 }
 
 func setupNet() (*device.Device, *netstack.Net, error) {
-	if len(opts.ClientIPs) == 0 {
-		return nil, nil, fmt.Errorf("client IP is required")
+	clientIPs := []netip.Addr{}
+	for _, ip := range opts.ClientIPs {
+		clientIPs = append(clientIPs, netip.Addr(ip))
 	}
-	var clientIPs []netip.Addr
-	for _, s := range opts.ClientIPs {
-		ip, err := netip.ParseAddr(s)
-		if err != nil {
-			return nil, nil, fmt.Errorf("parse client IP: %w", err)
-		}
-		clientIPs = append(clientIPs, ip)
-	}
-
 	tun, tnet, err := netstack.CreateNetTUN(clientIPs, nil, opts.MTU)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create netstack tun: %w", err)

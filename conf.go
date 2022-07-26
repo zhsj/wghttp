@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"net"
 	"net/netip"
-	"strconv"
 	"time"
 
 	"github.com/zhsj/wghttp/internal/resolver"
@@ -17,8 +14,8 @@ import (
 type peer struct {
 	resolver *resolver.Resolver
 
-	pubKey string
-	psk    string
+	pubKey keyT
+	psk    keyT
 
 	host string
 	ip   netip.Addr
@@ -26,30 +23,13 @@ type peer struct {
 }
 
 func newPeerEndpoint() (*peer, error) {
-	pubKey, err := base64.StdEncoding.DecodeString(opts.PeerKey)
-	if err != nil {
-		return nil, fmt.Errorf("parse peer public key: %w", err)
-	}
-	psk, err := base64.StdEncoding.DecodeString(opts.PresharedKey)
-	if err != nil {
-		return nil, fmt.Errorf("parse preshared key: %w", err)
-	}
-
 	p := &peer{
-		pubKey: hex.EncodeToString(pubKey),
-		psk:    hex.EncodeToString(psk),
+		pubKey: opts.PeerKey,
+		psk:    opts.PresharedKey,
+		host:   opts.PeerEndpoint.host,
+		port:   opts.PeerEndpoint.port,
 	}
-	host, port, err := net.SplitHostPort(opts.PeerEndpoint)
-	if err != nil {
-		return nil, fmt.Errorf("parse peer endpoint: %w", err)
-	}
-	port16, err := strconv.ParseUint(port, 10, 16)
-	if err != nil {
-		return nil, fmt.Errorf("parse peer endpoint port: %w", err)
-	}
-	p.host = host
-	p.port = uint16(port16)
-
+	var err error
 	p.ip, err = netip.ParseAddr(p.host)
 	if err == nil {
 		return p, nil
@@ -73,16 +53,16 @@ func newPeerEndpoint() (*peer, error) {
 }
 
 func (p *peer) initConf() string {
-	conf := "public_key=" + p.pubKey + "\n"
-	conf += "endpoint=" + netip.AddrPortFrom(p.ip, p.port).String() + "\n"
+	conf := fmt.Sprintf("public_key=%s\n", p.pubKey)
+	conf += fmt.Sprintf("endpoint=%s\n", netip.AddrPortFrom(p.ip, p.port))
 	conf += "allowed_ip=0.0.0.0/0\n"
 	conf += "allowed_ip=::/0\n"
 
 	if opts.KeepaliveInterval > 0 {
-		conf += fmt.Sprintf("persistent_keepalive_interval=%.f\n", opts.KeepaliveInterval.Seconds())
+		conf += fmt.Sprintf("persistent_keepalive_interval=%d\n", opts.KeepaliveInterval)
 	}
 	if p.psk != "" {
-		conf += "preshared_key=" + p.psk + "\n"
+		conf += fmt.Sprintf("preshared_key=%s\n", p.psk)
 	}
 
 	return conf
@@ -100,9 +80,9 @@ func (p *peer) updateConf() (string, bool) {
 	p.ip = newIP
 	logger.Verbosef("PeerEndpoint is changed to: %s", p.ip)
 
-	conf := "public_key=" + p.pubKey + "\n"
+	conf := fmt.Sprintf("public_key=%s\n", p.pubKey)
 	conf += "update_only=true\n"
-	conf += "endpoint=" + netip.AddrPortFrom(p.ip, p.port).String() + "\n"
+	conf += fmt.Sprintf("endpoint=%s\n", netip.AddrPortFrom(p.ip, p.port))
 	return conf, true
 }
 
@@ -126,11 +106,7 @@ func (p *peer) resolveHost() (netip.Addr, error) {
 }
 
 func ipcSet(dev *device.Device) error {
-	privateKey, err := base64.StdEncoding.DecodeString(opts.PrivateKey)
-	if err != nil {
-		return fmt.Errorf("parse client private key: %w", err)
-	}
-	conf := "private_key=" + hex.EncodeToString(privateKey) + "\n"
+	conf := fmt.Sprintf("private_key=%s\n", opts.PrivateKey)
 	if opts.ClientPort != 0 {
 		conf += fmt.Sprintf("listen_port=%d\n", opts.ClientPort)
 	}
@@ -148,7 +124,7 @@ func ipcSet(dev *device.Device) error {
 
 	if peer.resolver != nil {
 		go func() {
-			c := time.Tick(opts.ResolveInterval)
+			c := time.Tick(time.Duration(opts.ResolveInterval) * time.Second)
 
 			for range c {
 				conf, needUpdate := peer.updateConf()
