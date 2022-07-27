@@ -29,11 +29,7 @@ func stats(dev *device.Device) func() (any, error) {
 			Version      string
 		}{
 			NumGoroutine: runtime.NumGoroutine(),
-		}
-
-		info, ok := debug.ReadBuildInfo()
-		if ok {
-			stats.Version = info.Main.Version
+			Version:      version(),
 		}
 
 		scanner := bufio.NewScanner(&buf)
@@ -54,4 +50,12 @@ func stats(dev *device.Device) func() (any, error) {
 		}
 		return stats, nil
 	}
+}
+
+func version() string {
+	info, ok := debug.ReadBuildInfo()
+	if ok {
+		return info.Main.Version
+	}
+	return "(devel)"
 }

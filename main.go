@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	_ "embed"
 	"errors"
@@ -28,14 +27,8 @@ var (
 
 func main() {
 	parser := flags.NewParser(&opts, flags.Default)
-	parser.Usage = `[OPTIONS]
-
-Description:`
-	scanner := bufio.NewScanner(strings.NewReader(strings.TrimPrefix(readme, "# wghttp\n")))
-	for scanner.Scan() {
-		parser.Usage += "  " + scanner.Text() + "\n"
-	}
-	parser.Usage = strings.TrimSuffix(parser.Usage, "\n")
+	parser.LongDescription = fmt.Sprintf("wghttp %s\n\n", version())
+	parser.LongDescription += strings.Trim(strings.TrimPrefix(readme, "# wghttp"), "\n")
 	if _, err := parser.Parse(); err != nil {
 		code := 1
 		fe := &flags.Error{}
