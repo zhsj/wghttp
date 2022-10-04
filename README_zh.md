@@ -1,7 +1,5 @@
 # wghttp
 
-[English](./README.md) \| [中文简体](./README_zh.md)
-
 Turn WireGuard to HTTP & SOCKS5 proxies.
 
 The HTTP & SOCKS5 proxies are served on same port. It runs in userspace,
