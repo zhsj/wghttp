@@ -2,6 +2,8 @@
 
 ## From source
 
+（You need to have Go1.18 or higher installed）
+
 ```bash
 go install github.com/zhsj/wghttp@latest
 ```
