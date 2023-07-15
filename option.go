@@ -58,11 +58,12 @@ func (o *timeT) UnmarshalFlag(value string) error {
 }
 
 type options struct {
-	ClientIPs  []ipT  `long:"client-ip" env:"CLIENT_IP" env-delim:"," required:"true" description:"[Interface].Address\tfor WireGuard client (can be set multiple times)"`
-	ClientPort int    `long:"client-port" env:"CLIENT_PORT" description:"[Interface].ListenPort\tfor WireGuard client (optional)"`
-	PrivateKey keyT   `long:"private-key" env:"PRIVATE_KEY" required:"true" description:"[Interface].PrivateKey\tfor WireGuard client (format: base64)"`
-	DNS        string `long:"dns" env:"DNS" description:"[Interface].DNS\tfor WireGuard network (format: protocol://ip:port)\nProtocol includes udp(default), tcp, tls(DNS over TLS) and https(DNS over HTTPS)"`
-	MTU        int    `long:"mtu" env:"MTU" default:"1280" description:"[Interface].MTU\tfor WireGuard network"`
+	Config     func(filename string) error `short:"c" long:"config" description:"config file with [Application Options] and option values" no-ini:"true"`
+	ClientIPs  []ipT                       `long:"client-ip" env:"CLIENT_IP" env-delim:"," required:"true" description:"[Interface].Address\tfor WireGuard client (can be set multiple times)"`
+	ClientPort int                         `long:"client-port" env:"CLIENT_PORT" description:"[Interface].ListenPort\tfor WireGuard client (optional)"`
+	PrivateKey keyT                        `long:"private-key" env:"PRIVATE_KEY" required:"true" description:"[Interface].PrivateKey\tfor WireGuard client (format: base64)"`
+	DNS        string                      `long:"dns" env:"DNS" description:"[Interface].DNS\tfor WireGuard network (format: protocol://ip:port)\nProtocol includes udp(default), tcp, tls(DNS over TLS) and https(DNS over HTTPS)"`
+	MTU        int                         `long:"mtu" env:"MTU" default:"1280" description:"[Interface].MTU\tfor WireGuard network"`
 
 	PeerEndpoint      hostPortT `long:"peer-endpoint" env:"PEER_ENDPOINT" required:"true" description:"[Peer].Endpoint\tfor WireGuard server (format: host:port)"`
 	PeerKey           keyT      `long:"peer-key" env:"PEER_KEY" required:"true" description:"[Peer].PublicKey\tfor WireGuard server (format: base64)"`

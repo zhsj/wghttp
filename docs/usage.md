@@ -42,6 +42,25 @@ wghttp \
   --exit-mode=remote
 ```
 
+or:
+
+```bash
+wghttp --config wghttp.ini [further options]
+```
+
+with a config file `wghttp.ini` like this:
+
+```ini
+[Application Options]
+client-ip=10.200.100.8
+dns=10.200.100.1
+private-key=oK56DE9Ue9zK76rAc8pBl6opph+1v36lm7cXXsQKrQM=
+peer-key=GtL7fZc/bLnqZldpVofMCD6hDjrK28SsdLxevJ+qtKU=
+peer-endpoint=demo.wireguard.com:51820
+preshared-key=/UwcSPg38hW/D9Y3tcS1FOV0K1wuURMbS0sesJEP5ak=
+exit-mode=remote
+```
+
 ## Dynamic DNS
 
 When your server IP is not persistent, you can set a domain with

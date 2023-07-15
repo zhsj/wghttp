@@ -29,6 +29,11 @@ func main() {
 	parser := flags.NewParser(&opts, flags.Default)
 	parser.LongDescription = fmt.Sprintf("wghttp %s\n\n", version())
 	parser.LongDescription += strings.Trim(strings.TrimPrefix(readme, "# wghttp"), "\n")
+	// see https://github.com/jessevdk/go-flags/issues/106
+	opts.Config = func(filename string) error {
+		ini := flags.NewIniParser(parser)
+		return ini.ParseFile(filename)
+	}
 	if _, err := parser.Parse(); err != nil {
 		code := 1
 		fe := &flags.Error{}
