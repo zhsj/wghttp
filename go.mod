@@ -1,4 +1,4 @@
-module github.com/zhsj/wghttp
+module github.com/robse-git/wghttp
 
 go 1.18
 
